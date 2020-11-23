@@ -8,7 +8,8 @@ import re
 from sklearn.metrics import confusion_matrix
 import pkg_resources
 from collections import OrderedDict
-
+from os import path
+import json
 
 # Regex filtering helper functions
 def not_regex(txt):
@@ -146,6 +147,56 @@ def get_behav_data(dataset=None, file=None, filter_regex=None,
         data = filter_behav_data(data, filter_regex=filter_regex)
     return data.sort_index()
 
+
+def get_behav_data_master(dataset=None, file=None, filter_regex=None,
+                flip_valence=False, verbose=False, full_dataset=None):
+    '''Retrieves a file from a data release.
+
+    By default extracts meaningful_variables from the most recent Complete dataset.
+
+    Args:
+        dataset: optional, string indicating discovery, validation, or complete dataset of interest
+        file: optional, string indicating the file of interest
+        filter_regex: regex expression to filter data columns on. Can also supply
+            "survey(s)" or "task(s)" to return measures associated with those
+        flip_valence: bool, default false. If true use DV_valence.csv to flip variables based on their subjective valence
+    '''
+    if full_dataset is not None:
+        print("Full dataset is deprecrated and no longer functional")
+
+    basedir=get_info('base_directory')
+    if dataset == None:
+        dataset = get_recent_dataset()
+    datadir = os.path.join(basedir,'Data_master',dataset)
+    if file == None:
+        file = 'meaningful_variables.csv'
+    if verbose:
+        print('Getting dataset: %s...:\n' 'file: %s \n ' % (datadir, file))
+    datafile=os.path.join(datadir,file)
+    if os.path.exists(datafile):
+        data=pandas.read_csv(datafile,index_col=0)
+    else:
+        data = pandas.DataFrame()
+        print('Error: %s not found in %s' % (file, datadir))
+        return None
+
+    def valence_flip(data, flip_list):
+        for c in data.columns:
+            try:
+                data.loc[:,c] = data.loc[:,c] * flip_list.loc[c]
+            except TypeError:
+                continue
+    if flip_valence==True:
+        print('Flipping variables based on valence')
+        flip_df = os.path.join(datadir, 'DV_valence.csv')
+        valence_flip(data, flip_df)
+    if filter_regex is not None:
+        data = filter_behav_data(data, filter_regex=filter_regex)
+    return data.sort_index()
+
+
+
+
 def get_retest_data(dataset):
     retest_data = get_behav_data(dataset, file='bootstrap_merged.csv.gz')
     if retest_data is None:
@@ -154,12 +205,12 @@ def get_retest_data(dataset):
     retest_data = retest_data.loc[:, ['dv','icc3.k', 'spearman', 'pearson']]
     for column in retest_data.columns[1:]:
         retest_data[column] = pandas.to_numeric(retest_data[column])
-    retest_data = retest_data.groupby('dv').mean()    
+    retest_data = retest_data.groupby('dv').mean()
     retest_data.rename(index={'dot_pattern_expectancy.BX.BY_hddm_drift': 'dot_pattern_expectancy.BX-BY_hddm_drift',
                         'dot_pattern_expectancy.AY.BY_hddm_drift': 'dot_pattern_expectancy.AY-BY_hddm_drift'},
                         inplace=True)
     return retest_data
-    
+
 def get_info(item,infile=None):
     """
     get info from settings file
@@ -239,9 +290,9 @@ def get_item_metadata(survey, dataset=None,verbose=False):
     return metadata
 
 def get_demographics(dataset=None, cleanup=True, num_response_thresh=10,
-                     drop_categorical=True, verbose=False):
+                     drop_categorical=True, drop_crisis = False, verbose=False):
     """ Preprocess and return demographic data
-    
+
     Args:
         dataset: optional, which data release to draw from. The most recent one
             will be used if not specified
@@ -250,7 +301,7 @@ def get_demographics(dataset=None, cleanup=True, num_response_thresh=10,
         num_response_thresh: int, number of NaN responses allowed before removing
             variable
         drop_categorical: bool, whether to drop categorical variables
-    
+
     """
     categorical_vars = ['HispanicLatino','Race',
                         'DiseaseDiagnoses', 'DiseaseDiagnosesOther',
@@ -261,7 +312,14 @@ def get_demographics(dataset=None, cleanup=True, num_response_thresh=10,
                         'OtherDrugs', 'OtherRace', 'OtherTobaccoProducts',
                         'PsychDiagnoses',
                         'PsychDiagnosesOther']
-        
+
+    crisis_vars = ['country','state','other_state',
+                    'crisis_currentlyworking', 'crisis_occupation', 'crisis_military',
+                    'crisis_urbanicity', 'crisis_householdpeople', 'crisis_householdrelation',
+                    'crisis_esssentialworkers', 'crisis_workershome', 'crisis_workersforcovid',
+                    'crisis_householdrooms', 'crisis_healthinsurance', 'crisis_moneysupport',
+                    'crisis_physicalhealth', 'crisis_mentalhealth']
+
     demogdata=get_behav_data(dataset,'demographic_health.csv')
     if cleanup:
         q=demogdata.query('WeightPounds<50')
@@ -282,20 +340,28 @@ def get_demographics(dataset=None, cleanup=True, num_response_thresh=10,
             demogdata.loc[i,'CaffieneOtherSourcesDayMG']=numpy.nan
         if verbose and len(q)>0:
             print('replacing bad CaffienatedSodaCansPerDay value for', list(q.index))
-
-    demogdata=demogdata.assign(BMI=demogdata['WeightPounds']*0.45 / (demogdata['HeightInches']*0.025)**2)
+    #MV out for now as different weight and high system in covid need to fix
+    #demogdata=demogdata.assign(BMI=demogdata['WeightPounds']*0.45 / (demogdata['HeightInches']*0.025)**2)
     if drop_categorical:
        demogdata.drop(categorical_vars, axis=1, inplace=True)
-       if verbose: 
+       if verbose:
            print('dropping categorical variables')
-    demogdata=demogdata.assign(Obese=(demogdata['BMI']>30).astype('int'))
-        
+
+
+    #MV out for now as different weight and high system in covid need to fix
+    #demogdata=demogdata.assign(Obese=(demogdata['BMI']>30).astype('int'))
+
+    if drop_crisis:
+       demogdata.drop(crisis_vars, axis=1, inplace=True)
+       if verbose:
+           print('dropping crisis variables')
+
     # only keep variables with fewer NaNs then num_response_thresh
     if num_response_thresh is not None:
         good_vars = demogdata.isnull().sum() <= num_response_thresh
         demogdata = demogdata.loc[:,good_vars]
     return demogdata
-                  
+
 def get_single_dataset(dataset,survey):
     basedir=get_info('base_directory')
     infile=os.path.join(basedir,'data/Derived_Data/%s/surveydata/%s.tsv'%(dataset,survey))
@@ -323,6 +389,21 @@ def get_survey_data(dataset):
     for k in keylines:
         surveykey[k[0]]=k[2]
     return surveydata,surveykey
+
+def get_admin_data(data_dir, filename):
+    admin_dir = (path.join(data_dir, 'admin'))
+    with open((path.join(admin_dir, filename)), 'r') as f:
+        return(json.load(f))
+
+def get_turkers_finishing_battery(dictionary, string):
+    return {k:v for k,v in dictionary.items() if k.startswith(string)}
+
+
+def get_overlap_mturk_id(dict_a, dict_b):
+    keys_a = set(dict_a.values())
+    keys_b = set(dict_b.values())
+    overlap_values = keys_a & keys_b
+    return overlap_values
 
 def print_confusion_matrix(y_true,y_pred,labels=[0,1]):
     cm=confusion_matrix(y_true,y_pred)

@@ -11,13 +11,14 @@ import numpy as np
 import os
 import pandas as pd
 from time import time
+from sklearn.preprocessing import QuantileTransformer
 
 
 #***************************************************
 # ********* Helper Functions **********************
 #**************************************************
 def anonymize_data(data):
-    complete_workers = (data.groupby('worker_id').count().finishtime>=63)
+    complete_workers = (data.groupby('worker_id').count().finishtime>=80)
     complete_workers = list(complete_workers[complete_workers].index)
     workers = data.groupby('worker_id').finishtime.max().sort_values().index
     # make new ids
@@ -58,15 +59,15 @@ def calc_bonuses(data):
     std = data.groupby('experiment_exp_id').bonus.std()
     for exp in bonus_experiments:
         data.loc[data.experiment_exp_id == exp,'bonus_zscore'] = (data[data.experiment_exp_id == exp].bonus-means[exp])/std[exp]
-        
+
 def calc_trial_order(data):
     sorted_data = data.sort_values(by = ['worker_id','finishtime'])
-    num_exps = data.groupby('worker_id')['finishtime'].count() 
-    order = []    
+    num_exps = data.groupby('worker_id')['finishtime'].count()
+    order = []
     for x in num_exps:
         order += range(x)
     data.loc[sorted_data.index, 'trial_order'] = order
-    
+
 def check_timing(df):
     df.loc[:, 'time_diff'] = df['time_elapsed'].diff()
     timing_cols = pd.concat([df['block_duration'], df.get('feedback_duration'), df['timing_post_trial'].shift(1)], axis = 1)
@@ -78,7 +79,7 @@ def check_timing(df):
 def convert_date(data):
     new_date = data.loc[:,'finishtime'].map(lambda date: datetime.strptime(date[:-8],'%Y-%m-%dT%H:%M:%S'))
     data.loc[:,'finishtime'] = new_date
-        
+
 def convert_fmri_ids(data, id_file):
     conversion_lookup = json.load(open(id_file,'r'))
     data.worker_id.replace(conversion_lookup, inplace = True)
@@ -92,7 +93,7 @@ def convert_item_names(to_convert):
         'Object to convert must be a list, numpy array or pandas DataFrame'
     var_lookup = pd.Series.from_csv('../data_preparation/item_name_lookup.csv')
     inverse_lookup = pd.Series(index = var_lookup.values, data = var_lookup.index)
-    
+
     if type(to_convert) == pd.DataFrame:
         # convert columns if there are dependent variable names
         if to_convert.columns[0] in var_lookup:
@@ -107,7 +108,7 @@ def convert_item_names(to_convert):
             new_index = [var_lookup.loc[i] if i in var_lookup.index else i for i in to_convert.index]
         elif to_convert.index[0] in inverse_lookup:
             new_index = [inverse_lookup.loc[i] if i in inverse_lookup.index else i for i in to_convert.index]
-        else: 
+        else:
             new_index = to_convert.index
         to_convert.index = new_index
     elif isinstance(to_convert, (list, np.ndarray)):
@@ -115,7 +116,7 @@ def convert_item_names(to_convert):
             return  [var_lookup.loc[c] if c in var_lookup.index else c for c in to_convert]
         elif to_convert[0] in inverse_lookup:
             return  [inverse_lookup.loc[c] if c in inverse_lookup.index else c for c in to_convert]
-    
+
 def convert_var_names(to_convert):
     '''Convert array of variable names or columns/index of a dataframe. Assumes that all values either
     come from short of long variable names. If a dataframe is passed, variable conversion
@@ -126,7 +127,7 @@ def convert_var_names(to_convert):
     reference_location = os.path.join(get_info('base_directory'), 'references', 'variable_name_lookup.csv')
     var_lookup = pd.Series.from_csv(reference_location)
     inverse_lookup = pd.Series(index = var_lookup.values, data = var_lookup.index)
-    
+
     if type(to_convert) == pd.DataFrame:
         # convert columns if there are dependent variable names
         if to_convert.columns[0] in var_lookup:
@@ -141,7 +142,7 @@ def convert_var_names(to_convert):
             new_index = [var_lookup.loc[i] if i in var_lookup.index else i for i in to_convert.index]
         elif to_convert.index[0] in inverse_lookup:
             new_index = [inverse_lookup.loc[i] if i in inverse_lookup.index else i for i in to_convert.index]
-        else: 
+        else:
             new_index = to_convert.index
         to_convert.index = new_index
     elif isinstance(to_convert, (list, np.ndarray)):
@@ -149,9 +150,9 @@ def convert_var_names(to_convert):
             return  [var_lookup.loc[c] if c in var_lookup.index else c for c in to_convert]
         elif to_convert[0] in inverse_lookup:
             return  [inverse_lookup.loc[c] if c in inverse_lookup.index else c for c in to_convert]
-            
-    
-def download_data(data_loc, access_token = None, filters = None, 
+
+
+def download_data(data_loc, access_token = None, filters = None,
                   battery = None, save = True, url = None, file_name=None):
     start_time = time()
     #Load Results from Database
@@ -166,11 +167,11 @@ def download_data(data_loc, access_token = None, filters = None,
 
     # remove duplicates
     remove_duplicates(data)
-    
+
     # remove a few mistakes from data
-    data = data.query('worker_id not in ["A254JKSDNE44AM", "A1O51P5O9MC5LX"]') # Sandbox workers
-    data.reset_index(drop = True, inplace = True)    
-    
+    data = data.query('worker_id not in ["0220fc75-c7fd-47dc-9f52-311eb26b4308", "0d9e51c3-f317-4928-91fc-cbec9fb4d4bf"]') # Sandbox workers
+    data.reset_index(drop = True, inplace = True)
+
     # if saving, save the data and the lookup file for anonymized workers
     if save == True:
         if file_name == None:
@@ -180,10 +181,10 @@ def download_data(data_loc, access_token = None, filters = None,
         elif file_name[-3:] == 'pkl':
             data.to_pickle(os.path.join(data_loc,file_name))
         print('Finished saving')
-    
+
     finish_time = (time() - start_time)/60
     print('Finished downloading data. Time taken: ' + str(finish_time))
-    return data                 
+    return data
 
 def drop_failed_QC_vars(df, data):
     failed_exps = data.query('passed_QC==False')
@@ -203,17 +204,17 @@ def drop_vars(data, drop_vars = [], saved_vars = []):
         task_vars = ["demographics", # demographics
                     "(keep|release)_loss_percent", # angling risk task
                     ".first_order", "bis11_survey.total", # bis11
-                    "bis_bas_survey.BAS_total", 
+                    "bis_bas_survey.BAS_total",
                     "dietary_decision.prop_healthy_choice", # dietary decision
                     "dot_pattern_expectancy.*errors", # DPX errors
                     "eating_survey.total", # eating total score
-                    "five_facet_mindfulness_survey.total", 
+                    "five_facet_mindfulness_survey.total",
                     "\.risky_choices$", "\.number_of_switches", # holt and laury
                     "boxes_opened$", # information sampling task
                     "_total_points$", # IST
                     "\.go_acc$", "\.nogo_acc$", "\.go_rt$", "go_nogo.*error.*", #go_nogo
                     "discount_titrate.hyp_discount_rate", "discount_titrate.hyp_discount_rate_(glm|nm)"  #delay discounting
-                    "kirby.percent_patient","kirby.hyp_discount_rate$",  "kirby.exp_discount.*", 
+                    "kirby.percent_patient","kirby.hyp_discount_rate$",  "kirby.exp_discount.*",
                     "\.warnings$", "_notnow$", "_now$", #kirby and delay discounting
                     "auc", # bickel
                     "local_global_letter.*error.*", # local global errors
@@ -243,7 +244,7 @@ def drop_vars(data, drop_vars = [], saved_vars = []):
     else:
         final_data = data.drop(data.filter(regex=drop_vars).columns, axis = 1)
     return final_data
-    
+
 def get_bonuses(data, mean=10, limit=10):
     if 'bonus_zscore' not in data.columns:
         calc_bonuses(data)
@@ -272,10 +273,10 @@ def get_credit(data):
                 credit_array.append(np.nan)
         else:
             credit_array.append(np.nan)
-    data.loc[:,'credit'] = credit_array   
-    
+    data.loc[:,'credit'] = credit_array
+
 def get_items(data):
-    excluded_surveys = ['holt_laury_survey']
+    excluded_surveys = ['holt_laury_survey' ]
     items = []
     responses = []
     responses_text = []
@@ -296,44 +297,164 @@ def get_items(data):
             workers += list(survey.worker_id)
             item_nums += list(survey.question_num)
             exps += [exp] * len(survey.text)
-    
+
     items_df = pd.DataFrame({'survey': exps, 'worker': workers, 'item_text': items, 'coded_response': responses,
                              'response_text': responses_text, 'options': options}, dtype = float)
     items_df.loc[:,'item_num'] = [str(i).zfill(2) for i in item_nums]
     items_df.loc[:,'item_ID'] = items_df['survey'] + '.' + items_df['item_num'].astype(str)
     items_df=items_df[['worker','item_ID','coded_response','item_text','response_text','options','survey','item_num']]
     return items_df
-    
-    
+
+def get_items_sr(data):
+    included_surveys = ['bis11_survey', 'bis_bas_survey', 'brief_self_control_survey',
+                        'dickman_survey', 'dospert_eb_survey','dospert_rp_survey', 'dospert_rt_survey',
+                        'eating_survey', 'erq_survey',
+                        'five_facet_mindfulness_survey' ,'future_time_perspective_survey',
+                        'grit_scale_survey',
+                        'impulsive_venture_survey',
+                        'leisure_time_activity_survey',
+                        'mindful_attention_awareness_survey', 'mpq_control_survey',
+                        'selection_optimization_compensation_survey_correctlayout', 'self_regulation_survey' ,'sensation_seeking_survey_correctlayout',
+                        'ten_item_personality_survey', 'theories_of_willpower_survey' ,'time_perspective_survey',
+                        'upps_impulsivity_survey']
+    items = []
+    responses = []
+    responses_text = []
+    options = []
+    workers = []
+    item_nums = []
+    exps = []
+    for exp in data.experiment_exp_id.unique():
+        if  exp in included_surveys:
+            survey = extract_experiment(data,exp)
+            try:
+                responses += list(survey.response.map(lambda x: float(x)))
+            except ValueError:
+                continue
+            items += list(survey.text)
+            responses_text += [str(i) for i in list(survey.response_text)]
+            options += list(survey.options)
+            workers += list(survey.worker_id)
+            item_nums += list(survey.question_num)
+            exps += [exp] * len(survey.text)
+
+    items_df = pd.DataFrame({'survey': exps, 'worker': workers, 'item_text': items, 'coded_response': responses,
+                             'response_text': responses_text, 'options': options}, dtype = float)
+    items_df.loc[:,'item_num'] = [str(i).zfill(2) for i in item_nums]
+    items_df.loc[:,'item_ID'] = items_df['survey'] + '.' + items_df['item_num'].astype(str)
+    items_df=items_df[['worker','item_ID','coded_response','item_text','response_text','options','survey','item_num']]
+    return items_df
+
+def get_items_psych(data):
+    included_surveys = ['psychopathology_eat26_survey__covid',
+                        'psychopathology_ocir_survey__covid',
+                        'psychopathology_sds_survey__covid',
+                        'psychopathology_sms_survey__covid',
+                        'psychopathology_stai_survey__covid',
+                        'bis11_survey']
+
+    items = []
+    responses = []
+    responses_text = []
+    options = []
+    workers = []
+    item_nums = []
+    exps = []
+    for exp in data.experiment_exp_id.unique():
+        if  exp in included_surveys:
+            survey = extract_experiment(data,exp)
+            try:
+                responses += list(survey.response.map(lambda x: float(x)))
+            except ValueError:
+                continue
+            items += list(survey.text)
+            responses_text += [str(i) for i in list(survey.response_text)]
+            options += list(survey.options)
+            workers += list(survey.worker_id)
+            item_nums += list(survey.question_num)
+            exps += [exp] * len(survey.text)
+
+        #Ad hoc preprocessing
+        elif exp == 'psychopathology_lsas_survey__covid':
+            survey = extract_experiment(data,exp)
+            #Get items first
+            item_nums += list(survey['question_num'].loc[survey['text'].str.contains('Fear/Anxiety:')])
+
+            #Here need to average between item fear and item avoidance to obtain the mean value of the item
+            #see Roault et al., 2018
+            survey.insert(0,'numeric_response', survey['response'].astype(float))
+            # The items have the same question, but are different as asking whether it  is about
+            #feat or avoidance. Remove string that differentiate question
+            survey['text'] = survey['text'].map(lambda x: x.rstrip(' Q1, Fear/Anxiety:'))
+            survey['text'] = survey['text'].map(lambda x: x.rstrip(' Q2: Avoidance:'))
+            survey['text'] = survey['text'].map(lambda x: x.rstrip(' Q2, Avoidance:'))
+            #Average items that have the same question
+            tmp = (survey.groupby([ 'worker_id', 'text'], sort=False , as_index=False)['numeric_response'].mean())
+            try:
+                responses += list(tmp.numeric_response)
+            except ValueError:
+                continue
+
+            items+= list(tmp.text)
+            responses_text += ['average'] * len(tmp.text)
+            options += ['average'] * len(tmp.text)
+            workers += list(tmp.worker_id)
+            exps += [exp] * len(tmp.text)
+
+        elif exp == 'psychopathology_aes_survey__covid':
+            survey = extract_experiment(data,exp)
+            #Recode
+            survey.insert(0,'numeric_response',survey['response'].astype(float))
+            flip_qs = [2, 3, 4, 5, 6, 8, 9, 10, 13, 14, 15, 16, 17, 18, 19]
+            survey.loc[survey['question_num'].isin(flip_qs), 'response_recoded'] = survey.loc[survey['question_num'].isin(flip_qs), 'numeric_response'].replace({1.0:4, 2.0: 3, 3.0: 2, 4.0:1})
+
+            noflip_qs = [7, 11, 12]
+            survey.loc[survey['question_num'].isin(noflip_qs), 'response_recoded'] = survey.loc[survey['question_num'].isin(noflip_qs), 'numeric_response']
+
+            try:
+                responses += list(survey.response_recoded.map(lambda x: float(x)))
+            except ValueError:
+                continue
+            items += list(survey.text)
+            responses_text += [str(i) for i in list(survey.response_text)]
+            options += list(survey.options)
+            workers += list(survey.worker_id)
+            item_nums += list(survey.question_num)
+            exps += [exp] * len(survey.text)
+
+    items_psych_df = pd.DataFrame({'survey': exps, 'worker': workers, 'item_text': items, 'coded_response': responses,
+                                   'response_text': responses_text, 'options': options}, dtype = float)
+    items_psych_df.loc[:,'item_num'] = [str(i).zfill(2) for i in item_nums]
+    items_psych_df.loc[:,'item_ID'] = items_psych_df['survey'] + '.' + items_psych_df['item_num'].astype(str)
+    items_psych_df=items_psych_df[['worker','item_ID','coded_response','item_text','response_text','options','survey','item_num']]
+    return items_psych_df
+
+
+#adapted mv
 def get_pay(data):
     assert 'ontask_time' in data.columns, \
-        'Task time not found. Must run "calc_time_taken" first.' 
+        'Task time not found. Must run "calc_time_taken" first.'
     all_exps = data.experiment_exp_id.unique()
     exps_completed = data.groupby('worker_id').experiment_exp_id.unique()
     exps_not_completed = exps_completed.map(lambda x: list(set(all_exps) - set(x) - set(['selection_optimization_compensation'])))
-    completed = exps_completed[exps_completed.map(lambda x: len(x)>=63)]
-    almost_completed = exps_not_completed[exps_not_completed.map(lambda x: x == ['angling_risk_task_always_sunny'])]
-    not_completed = exps_not_completed[exps_not_completed.map(lambda x: len(x)>0 and x != ['angling_risk_task_always_sunny'])]
-    # remove stray completions
-    not_completed.loc[[i for i in not_completed.index if 's0' not in i]]
+    completed = exps_completed[exps_completed.map(lambda x: len(x)==80)]
+    not_completed = exps_completed[exps_completed.map(lambda x: len(x)<80)]
     # calculate time taken
     task_time = data.groupby('experiment_exp_id').ontask_time.mean()/60+2 # +2 for generic instruction time
     time_spent = exps_completed.map(lambda x: np.sum([task_time[i] if task_time[i]==task_time[i] else 3 for i in x])/60)
-    time_missed = exps_not_completed.map(lambda x: np.sum([task_time[i] if task_time[i]==task_time[i] else 3 for i in x])/60)
     # calculate pay
-    completed_pay = pd.Series(data = 60, index = completed.index)
-    prorate_pay = 60-time_missed[almost_completed.index]*6
-    reduced_pay = time_spent[not_completed.index]*2 + np.floor(time_spent[not_completed.index])*2
+    completed_pay = pd.Series(data = 96, index = completed.index)
+    reduced_pay = round(time_spent[not_completed.index]*4,2)
     #remove anyone who was double counted
-    reduced_pay.drop(list(completed_pay.index) + list(prorate_pay.index), inplace = True, errors = 'ignore')
-    pay= pd.concat([completed_pay, reduced_pay,prorate_pay]).map(lambda x: round(x,1)).to_frame(name = 'base')
-    pay['bonuses'] = get_bonuses(data)
-    pay['total'] = pay.sum(axis = 1)
+    #reduced_pay.drop(list(completed_pay.index) + list(prorate_pay.index), inplace = True, errors = 'ignore')
+    pay= pd.concat([completed_pay, reduced_pay]).map(lambda x: round(x,1)).to_frame(name = 'base')
+    #pay['bonuses'] = get_bonuses(data)
+    #pay['total'] = pay.sum(axis = 1)
     return pay
 
 def get_fmri_pay(data):
     assert 'ontask_time' in data.columns, \
-        'Task time not found. Must run "calc_time_taken" first.' 
+        'Task time not found. Must run "calc_time_taken" first.'
     all_exps = data.experiment_exp_id.unique()
     exps_completed = data.groupby('worker_id').experiment_exp_id.unique()
     exps_not_completed = exps_completed.map(lambda x: list(set(all_exps) - set(x) - set(['selection_optimization_compensation'])))
@@ -363,12 +484,14 @@ def get_worker_demographics(worker_id, data):
         return {'age': age, 'sex': sex, 'race': race, 'hispanic': hispanic}
     else:
         return np.nan
-    
+
+
+
 def print_time(data, time_col = 'ontask_time'):
     '''Prints time taken for each experiment in minutes
     :param time_col: Dataframe column of time in seconds
     '''
-    df = data.copy()    
+    df = data.copy()
     assert time_col in df, \
         '"%s" has not been calculated yet. Use calc_time_taken method' % (time_col)
     #drop rows where time can't be calculated
@@ -376,14 +499,14 @@ def print_time(data, time_col = 'ontask_time'):
     time = (df.groupby('experiment_exp_id')[time_col].mean()/60.0).round(2)
     print(time)
     return time
-                   
+
 def quality_check(data):
     """
     Checks data to make sure each experiment passed some "gut check" measures
     Used to exclude data on individual tasks or whole subjects if they fail
     too many tasks.
     NOTE: This function has an issue such that it inappropriately evaluates
-    stop signal tasks based on the number of missed responses. Rather than 
+    stop signal tasks based on the number of missed responses. Rather than
     changing the function (which would affect our samples which are already
     determined) I am leaving it, and introducing a quality check correction
     that will be performed after subjects are already rejected
@@ -391,7 +514,7 @@ def quality_check(data):
     start_time = time()
     rt_thresh_lookup = {
         'angling_risk_task_always_sunny': 0,
-        'simple_reaction_time': 150    
+        'simple_reaction_time': 150
     }
     acc_thresh_lookup = {
         'digit_span': 0,
@@ -402,14 +525,14 @@ def quality_check(data):
         'shift_task': 0,
         'spatial_span': 0,
         'tower_of_london': 0
-        
+
     }
     missed_thresh_lookup = {
         'information_sampling_task': 1,
         'go_nogo': 1,
         'tower_of_london': 2
     }
-    
+
     response_thresh_lookup = {
         'angling_risk_task_always_sunny': np.nan,
         'columbia_card_task_cold': np.nan,
@@ -420,7 +543,7 @@ def quality_check(data):
         'simple_reaction_time': np.nan,
         'spatial_span': np.nan,
     }
-    
+
     templates = data.groupby('experiment_exp_id').experiment_template.unique()
     data.loc[:,'passed_QC'] = True
     for exp in data.experiment_exp_id.unique():
@@ -432,7 +555,7 @@ def quality_check(data):
                 acc_thresh = acc_thresh_lookup.get(exp,.6)
                 missed_thresh = missed_thresh_lookup.get(exp,.25)
                 response_thresh = response_thresh_lookup.get(exp,.95)
-                
+
                 # special cases...
                 if exp == 'information_sampling_task':
                     df.groupby('worker_id').which_click_in_round.value_counts()
@@ -498,8 +621,8 @@ def quality_check(data):
                                                             lambda x: np.any(pd.value_counts(x) > pd.value_counts(x).sum()*response_thresh)))
                     elif 'key_press' in df.columns:
                         passed_response = np.logical_not(df.query('rt != -1').groupby('worker_id').key_press.agg(
-                                                            lambda x: np.any(pd.value_counts(x) > pd.value_counts(x).sum()*response_thresh)))   
-                                                            
+                                                            lambda x: np.any(pd.value_counts(x) > pd.value_counts(x).sum()*response_thresh)))
+
                 passed_df = pd.concat([passed_rt,passed_acc,passed_miss,passed_response], axis = 1).fillna(False, inplace = False)
                 passed = passed_df.all(axis = 1)
                 failed = passed[passed == False]
@@ -526,7 +649,7 @@ def quality_check_correction(data):
         passed_miss = df.query('SS_trial_type=="go"').groupby('worker_id').rt.agg(lambda x: np.mean(x == -1)) < missed_thresh
         passed_acc = df.query('rt != -1').groupby('worker_id').correct.mean() >= acc_thresh
         passed_response = np.logical_not(df.query('rt != -1').groupby('worker_id').key_press.agg(
-                                                lambda x: np.any(pd.value_counts(x) > pd.value_counts(x).sum()*response_thresh))) 
+                                                lambda x: np.any(pd.value_counts(x) > pd.value_counts(x).sum()*response_thresh)))
         passed_df = pd.concat([passed_rt,passed_acc,passed_miss,passed_response], axis = 1).fillna(False, inplace = False)
         passed = passed_df.all(axis = 1)
         failed = passed[passed == False]
@@ -534,11 +657,11 @@ def quality_check_correction(data):
             data.loc[(data.experiment_exp_id == exp) & (data.worker_id == subj),'passed_QC'] = False
         for subj in passed.index:
             data.loc[(data.experiment_exp_id == exp) & (data.worker_id == subj),'passed_QC'] = True
-    
-def remove_failed_subjects(data):
+
+def remove_failed_subjects(data, n_exps):
     if 'passed_QC' not in data.columns:
         quality_check(data)
-    failed_workers = data.groupby('worker_id').passed_QC.sum() < 60
+    failed_workers = data.groupby('worker_id').passed_QC.sum() < n_exps
     failed_workers = list(failed_workers[failed_workers].index)
     # drop workers
     failed_data = data[data['worker_id'].isin(failed_workers)]
@@ -565,7 +688,7 @@ def remove_correlated_task_variables(data, threshold=.85):
     print('\n'.join(columns_to_remove))
     data = drop_vars(data,columns_to_remove)
     return data
-    
+
 def remove_outliers(data, quantile_range = 2.5):
     '''Removes outliers more than 1.5IQR below Q1 or above Q3
     '''
@@ -577,7 +700,7 @@ def remove_outliers(data, quantile_range = 2.5):
     data_mat[np.logical_or((data_mat<lowlimit), (data_mat>highlimit))] = np.nan
     data = pd.DataFrame(data=data_mat, index=data.index, columns=data.columns)
     return data
-    
+
 def save_task_data(data_loc, data):
     path = os.path.join(data_loc,'Individual_Measures')
     if not os.path.exists(path):
@@ -586,7 +709,7 @@ def save_task_data(data_loc, data):
         print('Saving %s...' % exp_id)
         extract_experiment(data,exp_id).to_csv(os.path.join(path, exp_id + '.csv.gz'), compression = 'gzip')
 
-def transform_remove_skew(data, threshold=1, 
+def transform_remove_skew(data, threshold=1,
                           positive_skewed=None,
                           negative_skewed=None,
                           drop_failed=True,
@@ -648,3 +771,66 @@ def transform_remove_skew(data, threshold=1,
         print('*'*40)
     data = pd.concat([data, successful_transforms], axis=1)
     return data.sort_index(axis = 1)
+
+
+
+def transform_qt(data_train,
+                 data_test = None,
+                 threshold =2,
+                 drop_failed = True,
+                 verbose = True,
+                 quantile = 100 ,
+                 distribution = 'normal',
+                 output_train= True):
+    data = data_train.copy()
+    #transformer
+    qt = QuantileTransformer(n_quantiles=quantile, random_state=0, output_distribution = distribution)
+    data_qt = pd.DataFrame(qt.fit_transform(data), columns = data.columns, index= data.index)
+    successful_transforms= data_qt.loc[:,abs(data_qt.skew())<threshold]
+    if verbose:
+        print('*'*70)
+        print('** Successfully transformed %s variables for training dataset:' % len(successful_transforms.columns))
+        print('*'*70)
+    dropped_vars = set(data_qt)-set(successful_transforms)
+    if verbose:
+        print('*'*70)
+        print('** %s variables that could not be transformed successfully:' % len(dropped_vars))
+        print('\n'.join(dropped_vars))
+        print('*'*70)
+    if drop_failed:
+        data_qt.drop(dropped_vars, axis=1, inplace = True)
+        if verbose:
+            print('*'*70)
+            print('Dropping %s skewed data from training dataset that could not be transformed successfully:' % len(dropped_vars))
+            print('*'*70)
+    data_qt.columns = [i + '.qt' for i in data_qt]
+    if data_test is not None:
+       #transform datatrain using the calculation from the trianing dataset
+        data_tst = data_test.copy()
+        data_tst_qt = pd.DataFrame(qt.transform(data_tst), columns = data_tst.columns, index= data_tst.index)
+        successful_transforms_tst= data_tst_qt.loc[:,abs(data_tst_qt.skew())<threshold]
+        if verbose:
+            print('*'*70)
+            print('** Successfully transformed %s variables for testing dataset:' % len(successful_transforms_tst.columns))
+            #print('\n'.join(successful_transforms_tst.columns))
+            print('*'*70)
+        dropped_vars_tst = set(data_tst_qt)-set(successful_transforms_tst)
+        if verbose:
+            print('*'*70)
+            print('** %s variables could not be transformed successfully:' % len(dropped_vars_tst))
+            print('\n'.join(dropped_vars_tst))
+            print('*'*70)
+        if drop_failed:
+            data_tst_qt.drop(dropped_vars_tst, axis=1, inplace = True)
+            if verbose:
+                print('*'*70)
+                print('Dropping %s skewed data from testing dataset that could not be transformed successfully:' % len(dropped_vars_tst))
+                print('\n'.join(dropped_vars_tst))
+                print('*'*70)
+        data_tst_qt.columns = [i + '.qt' for i in data_tst_qt]
+        if output_train == True:
+            return data_qt.sort_index(axis = 1), data_tst_qt.sort_index(axis = 1)
+        else:
+            return data_tst_qt.sort_index(axis = 1)
+    else:
+        return data_qt.sort_index(axis = 1)

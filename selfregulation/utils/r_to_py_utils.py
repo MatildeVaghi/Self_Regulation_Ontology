@@ -13,7 +13,7 @@ def missForest(data):
     data_complete, error = missForest.missForest(data)
     imputed_df = pd.DataFrame(np.matrix(data_complete).T, index=data.index, columns=data.columns)
     return imputed_df, error
-    
+
 
 def GPArotation(data, method='varimax', normalize=True):
     GPArotation = importr('GPArotation')
@@ -36,8 +36,8 @@ def get_attr(fa, attr):
             return val
         except ValueError:
             print('Did not pass a valid attribute')
-            
-def psychFA(data, n_components, return_attrs=['BIC', 'SABIC', 'RMSEA'], 
+
+def psychFA(data, n_components, return_attrs=['BIC', 'SABIC', 'RMSEA', 'TLI', 'rms', 'crms'], 
             rotate='oblimin', method='ml', nobs=0, n_iter=1, verbose=False):
     psych = importr('psych')
     if n_iter==1:
@@ -45,7 +45,7 @@ def psychFA(data, n_components, return_attrs=['BIC', 'SABIC', 'RMSEA'],
                       scores='tenBerge')
     else:
         assert nobs==0
-        fa = psych.fa_sapa(data, n_components, rotate=rotate, fm=method, 
+        fa = psych.fa_sapa(data, n_components, rotate=rotate, fm=method,
                            scores='tenBerge', n_iter=n_iter, frac=.9)
     # ensure the model isn't ill-specified
     if get_attr(fa, 'dof') > 0:
@@ -84,15 +84,15 @@ def dynamicTreeCut(distance_df, func='hybrid', method='average', **cluster_kws):
     elif func == 'dynamic':
         clustering = dynamicTreeCut.cutreeDynamic(link, **cluster_kws)
         return np.array(clustering)
-    
+
 def glmer(data, formula, verbose=False):
     base = importr('base')
     lme4 = importr('lme4')
     rs = lme4.glmer(Formula(formula), data, family = 'binomial')
-    
+
     fixed_effects = lme4.fixed_effects(rs)
     fixed_effects = {k:v for k,v in zip(fixed_effects.names, list(fixed_effects))}
-                                  
+
     random_effects = lme4.random_effects(rs)[0]
     random_effects = pd.DataFrame([list(lst) for lst in random_effects], index = list(random_effects.colnames)).T
     if verbose:
@@ -103,10 +103,10 @@ def lmer(data, formula, verbose=False):
     base = importr('base')
     lme4 = importr('lme4')
     rs = lme4.lmer(Formula(formula), data)
-    
+
     fixed_effects = lme4.fixed_effects(rs)
     fixed_effects = {k:v for k,v in zip(fixed_effects.names, list(fixed_effects))}
-                                  
+
     random_effects = lme4.random_effects(rs)
     random_df = pd.DataFrame()
     for re in random_effects:
@@ -146,12 +146,12 @@ def qgraph_cor(data, glasso=False, gamma=.25):
         best_index = np.argmin(EBICglasso[1])
         tuning_param = EBICglasso[4][best_index]
         glasso_cors = np.array(EBICglasso[0][0])[:,:,best_index]
-        glasso_cors_df = pd.DataFrame(np.matrix(glasso_cors), 
-                           index=data.columns, 
+        glasso_cors_df = pd.DataFrame(np.matrix(glasso_cors),
+                           index=data.columns,
                            columns=data.columns)
         return glasso_cors_df, tuning_param
     else:
-        cors_df = pd.DataFrame(np.matrix(cors), 
-                           index=data.columns, 
+        cors_df = pd.DataFrame(np.matrix(cors),
+                           index=data.columns,
                            columns=data.columns)
         return cors_df

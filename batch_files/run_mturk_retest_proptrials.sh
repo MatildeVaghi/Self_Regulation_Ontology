@@ -1,3 +1,0 @@
-bash .run_mturk_retest_DDM_proptrials.sh
-bash .run_mturk_retest_short_proptrials.sh
-bash .run_mturk_retest_long_proptrials.sh
